@@ -1,0 +1,135 @@
+import math
+import numpy as np
+import itertools
+import matplotlib.pyplot as plt
+
+
+
+N_arm=7 #Arms
+mean_reward=np.linspace(start=1,stop=7,num=N_arm) #True Rewards
+sigma=1 #Variance
+
+
+##Composition of oracles 1 and 2
+def composite_oracle(rewards_1,rewards_2,max_choice,k):
+    superarm_indexes = []
+    for i in range(max_choice):
+        superarm_indexes.extend(
+            list(itertools.combinations(np.linspace(start=0, stop=len(mean_reward) - 1, num=len(mean_reward)), i)))
+    superarm_indexes.__delitem__(0)
+
+    all_subsets = []
+    for i in range(max_choice):
+        all_subsets.extend(list(itertools.combinations(rewards_1, i)))
+    all_subsets.__delitem__(0)
+
+    all_sums = []
+    for i in range(len(all_subsets)):
+        all_sums.append(sum(all_subsets[i]))
+
+    all_subsets_1 = []
+    for i in range(max_choice):
+        all_subsets_1.extend(list(itertools.combinations(rewards_2, i)))
+    all_subsets_1.__delitem__(0)
+
+    all_sums_1 = []
+    for i in range(len(all_subsets)):
+        all_sums_1.append(sum(all_subsets_1[i]))
+
+    arr_1 = np.array(all_sums)
+    arr_2 = np.array(all_sums_1)
+    index_arr = np.linspace(start=0, stop=len(arr_1) - 1, num=len(arr_1))
+
+    arr_1 = arr_1.reshape(len(arr_1), 1)
+    arr_2 = arr_2.reshape(len(arr_1), 1)
+    index_arr = index_arr.reshape(len(arr_1), 1)
+
+    temp_arr = np.concatenate((index_arr.T, arr_1.T, arr_2.T), axis=0)
+
+    sorted_1 = temp_arr[:, temp_arr[temp_arr.shape[0] - 1, :].argsort()]
+    sorted_1 = np.array(sorted_1)
+    some_best_val = sorted_1[0:(sorted_1.shape[0] - 1), [*range((len(np.array(arr_1)) - k), (len(np.array(arr_1))))]]
+
+    some_best_val_1 = some_best_val[:, some_best_val[some_best_val.shape[0] - 1, :].argsort()]
+
+    return superarm_indexes[int(some_best_val_1[0, 0])]
+
+
+#Reward generation
+def pull_arm(index):
+    y=np.random.normal(mean_reward[index],1,1)
+    return y
+
+
+
+
+###CUCBLCB_two ##################################################################
+
+reps=10**2 #number of replications
+max_iter=10**3 #number of iterations
+alpha=3 #explorartion coefficient
+arm_selected_mat=[[0] * max_iter for i in range(reps)] #Arms selected list initialization
+regret_mat_ucblcb_two=np.zeros(shape=(reps,max_iter)) #regret matrix by reps and maxiter
+m=4 #number of allowed elements plus 1
+order_1=2 #the order wanted
+
+true_superarm=composite_oracle(mean_reward,mean_reward,m,order_1) #true superarm
+
+superarm_list=[] #superarm list
+
+for i in range(reps):
+    k = 2
+    count_index = [0] * N_arm
+    mean_arm_temp = [0] * N_arm
+    ucb_arm_temp = [0] * N_arm
+    lcb_arm_temp = [0] * N_arm
+    for l in range(N_arm):
+        mean_arm_temp[l] = pull_arm(l)
+        count_index[l] = 1
+        ucb_arm_temp[l] = mean_arm_temp[l]
+        lcb_arm_temp[l] = ucb_arm_temp[l]
+    while k<max_iter:
+        super_arm_selected = list(composite_oracle(np.asarray(lcb_arm_temp), np.asarray(ucb_arm_temp), m, order_1))
+        superarm_list.append(super_arm_selected)
+        reward = np.zeros(N_arm)
+        temp_val = np.zeros(N_arm)
+        for p in super_arm_selected:
+            p_temp = int(p)
+            reward[p_temp] = float(pull_arm(p_temp))
+            temp_val[p_temp] = count_index[p_temp] * mean_arm_temp[p_temp]
+            count_index[p_temp] = count_index[p_temp] + 1
+            mean_arm_temp[p_temp] = (temp_val[p_temp] + reward[p_temp]) / count_index[p_temp]
+        for j in range(N_arm):
+            ucb_arm_temp[j] = mean_arm_temp[j] + math.sqrt(
+                (2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+            lcb_arm_temp[j] = mean_arm_temp[j] - math.sqrt(
+                (2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+        regret_mat_ucblcb_two[i, k] = math.fabs(
+            sum([mean_reward[int(i)] for i in true_superarm]) - sum([mean_reward[int(i)] for i in super_arm_selected]))
+        k = k + 1
+
+regret_cum_mat_two=np.zeros(shape=(reps,max_iter)) #cumulative regret initialization
+
+
+regret_cum_mat_two[:,0]=regret_mat_ucblcb_two[:,0]  #cumulative regret first values
+
+#cumulative regret iteration step
+for i in range(1,max_iter):
+    regret_cum_mat_two[:,i]=regret_cum_mat_two[:,i-1]+regret_mat_ucblcb_two[:,i]
+
+
+
+
+regret_cum_vec_two=np.zeros(max_iter)  #initialization of the cumulative regret mean of reps
+
+
+regret_cum_vec_sd_two=np.zeros(max_iter) # the standard deviation of reps
+
+#Calculation of mean and standard deviation
+for i in range(max_iter):
+    regret_cum_vec_two[i]=np.mean(regret_cum_mat_two[:,i])
+    regret_cum_vec_sd_two[i]=np.std(regret_cum_mat_two[:,i])/np.sqrt(reps)
+
+mean_two = regret_cum_vec_two
+std_two = regret_cum_vec_sd_two
+#################

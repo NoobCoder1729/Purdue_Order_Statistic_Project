@@ -1,0 +1,235 @@
+import math
+
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+
+
+N_arm=10 #Arms
+mean_reward=np.linspace(start=1,stop=5,num=N_arm) #True rewards
+sigma=1 #standard deviation of errors
+alpha=3 # exploration coefficient
+order_1=2 #order statistic
+
+#reward generation
+def pull_arm(index):
+    y=np.random.normal(mean_reward[index],1,1)
+    return y
+
+##oracle for selecting the k-th best
+def selection_fn(arr_1,arr_2,k):
+    arr_1=np.array(arr_1)
+    arr_2=np.array(arr_2)
+    index_arr=np.linspace(start=1,stop=len(arr_1),num= len(arr_1))
+
+    arr_1=arr_1.reshape(len(arr_1),1)
+    arr_2=arr_2.reshape(len(arr_1),1)
+    index_arr=index_arr.reshape(len(arr_1),1)
+
+    temp_arr=np.concatenate((index_arr.T,arr_1.T,arr_2.T),axis=0)
+
+    sorted_1=temp_arr[:,temp_arr[temp_arr.shape[0]-1,:].argsort()]
+    sorted_1=np.array(sorted_1)
+    some_best_val=sorted_1[0:(sorted_1.shape[0]-1),[*range((len(np.array(arr_1))-k),(len(np.array(arr_1))))]]
+
+    some_best_val_1=some_best_val[:,some_best_val[some_best_val.shape[0]-1,:].argsort()]
+
+    return some_best_val_1[0,0]
+
+###UCB second best
+def selection_fn_scnd_best(arr,k):
+    arr = np.array(arr)
+    index_arr = np.linspace(start=1, stop=len(arr), num=len(arr))
+    arr = arr.reshape(len(arr), 1)
+    index_arr = index_arr.reshape(len(arr), 1)
+    temp_arr = np.concatenate((index_arr.T, arr.T), axis=0)
+    sorted_1 = temp_arr[:, temp_arr[temp_arr.shape[0] - 1, :].argsort()]
+    sorted_1 = np.array(sorted_1)
+    some_best_val = sorted_1[0, len(arr)-k]
+    return some_best_val
+##Alternate UCB LCB selection
+def selection_fn_alt(arr_1,arr_2,k,index):
+    if index % 2==0:
+        arr_1 = np.array(arr_1)
+        index_arr = np.linspace(start=1, stop=len(arr_1), num=len(arr_1))
+        arr_1 = arr_1.reshape(len(arr_1), 1)
+        index_arr = index_arr.reshape(len(arr_1), 1)
+        temp_arr = np.concatenate((index_arr.T, arr_1.T), axis=0)
+        sorted_1 = temp_arr[:, temp_arr[temp_arr.shape[0] - 1, :].argsort()]
+        sorted_1 = np.array(sorted_1)
+        some_best_val = sorted_1[0, len(arr_1) - k]
+    if index % 2==1:
+        arr_2 = np.array(arr_2)
+        index_arr = np.linspace(start=1, stop=len(arr_2), num=len(arr_2))
+        arr_2 = arr_2.reshape(len(arr_2), 1)
+        index_arr = index_arr.reshape(len(arr_2), 1)
+        temp_arr = np.concatenate((index_arr.T, arr_2.T), axis=0)
+        sorted_1 = temp_arr[:, temp_arr[temp_arr.shape[0] - 1, :].argsort()]
+        sorted_1 = np.array(sorted_1)
+        some_best_val = sorted_1[0,k-1]
+    return some_best_val
+
+###UCBLCB##################################################################
+
+reps=10**2 ##number of replications
+max_iter=10**3 #maximum number of iterations
+
+arm_selected_mat=np.zeros(shape=(reps,max_iter)) ##arm selected initialization
+regret_mat_ucblcb=np.zeros(shape=(reps,max_iter)) ###regret matrix initialization
+
+##iteration step UCBLCB###############
+for i in range(reps):
+    k = 2
+    count_index = [0] * N_arm
+    mean_arm_temp = [0] * N_arm
+    ucb_arm_temp = [0] * N_arm
+    lcb_arm_temp = [0] * N_arm
+    for l in range(N_arm):
+        mean_arm_temp[l] = pull_arm(l)
+        count_index[l] = 1
+        ucb_arm_temp[l] = mean_arm_temp[l]
+        lcb_arm_temp[l] = ucb_arm_temp[l]
+    while k<max_iter:
+        arm_selected=math.floor(selection_fn(np.asarray(lcb_arm_temp),np.asarray(ucb_arm_temp),order_1))-1
+        arm_selected_mat[i,k-2]=arm_selected
+        reward=pull_arm(arm_selected)
+        temp_val=count_index[arm_selected]*mean_arm_temp[arm_selected]
+        count_index[arm_selected]=count_index[arm_selected]+1
+        mean_arm_temp[arm_selected]=(temp_val+reward)/count_index[arm_selected]
+        for j in range(N_arm):
+            ucb_arm_temp[j] = mean_arm_temp[j] + math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+            lcb_arm_temp[j] = mean_arm_temp[j] - math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+        regret_mat_ucblcb[i,k] =math.fabs(mean_reward[len(mean_reward)-order_1]-mean_reward[arm_selected])
+        k=k+1
+
+###########Second Best UCB##########################################
+
+reps=10**2
+max_iter=10**3
+
+arm_selected_scnd_mat=np.zeros(shape=(reps,max_iter))
+regret_mat_scnd=np.zeros(shape=(reps,max_iter))
+
+for i in range(reps):
+    k = 2
+    count_index = [0] * N_arm
+    mean_arm_temp = [0] * N_arm
+    ucb_arm_temp = [0] * N_arm
+    lcb_arm_temp = [0] * N_arm
+    for l in range(N_arm):
+        mean_arm_temp[l] = pull_arm(l)
+        count_index[l] = 1
+        ucb_arm_temp[l] = mean_arm_temp[l]
+        lcb_arm_temp[l] = ucb_arm_temp[l]
+    while k<max_iter:
+        arm_selected_scnd=math.floor(selection_fn_scnd_best(np.asarray(ucb_arm_temp),order_1))-1
+        arm_selected_scnd_mat[i,k-2]=arm_selected_scnd
+        reward=pull_arm(arm_selected_scnd)
+        temp_val=count_index[arm_selected_scnd]*mean_arm_temp[arm_selected_scnd]
+        count_index[arm_selected_scnd]=count_index[arm_selected_scnd]+1
+        mean_arm_temp[arm_selected_scnd]=(temp_val+reward)/count_index[arm_selected_scnd]
+        for j in range(N_arm):
+            ucb_arm_temp[j] = mean_arm_temp[j] + math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+            lcb_arm_temp[j] = mean_arm_temp[j] - math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+        regret_mat_scnd[i,k]=math.fabs(mean_reward[len(mean_reward)-order_1]-mean_reward[arm_selected_scnd])
+        k=k+1
+
+#############Alternate#######################################
+
+reps=10**2
+max_iter=10**3
+
+arm_selected_alt_mat=np.zeros(shape=(reps,max_iter))
+regret_mat_alt=np.zeros(shape=(reps,max_iter))
+
+for i in range(reps):
+    k = 2
+    count_index = [0] * N_arm
+    mean_arm_temp = [0] * N_arm
+    ucb_arm_temp = [0] * N_arm
+    lcb_arm_temp = [0] * N_arm
+    for l in range(N_arm):
+        mean_arm_temp[l] = pull_arm(l)
+        count_index[l] = 1
+        ucb_arm_temp[l] = mean_arm_temp[l]
+        lcb_arm_temp[l] = ucb_arm_temp[l]
+    while k<max_iter:
+        arm_selected_alt=math.floor(selection_fn_alt(np.asarray(ucb_arm_temp),np.asarray(lcb_arm_temp),order_1,k))-1
+        arm_selected_alt_mat[i,k-2]=arm_selected_alt
+        reward=pull_arm(arm_selected_alt)
+        temp_val=count_index[arm_selected_alt]*mean_arm_temp[arm_selected_alt]
+        count_index[arm_selected_alt]=count_index[arm_selected_alt]+1
+        mean_arm_temp[arm_selected_alt]=(temp_val+reward)/count_index[arm_selected_alt]
+        for j in range(N_arm):
+            ucb_arm_temp[j] = mean_arm_temp[j] + math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+            lcb_arm_temp[j] = mean_arm_temp[j] - math.sqrt((2 * alpha * sigma ** 2 * math.log(k, math.e) / count_index[j]))
+        regret_mat_alt[i,k]=math.fabs(mean_reward[len(mean_reward)-order_1]-mean_reward[arm_selected_alt])
+        k=k+1
+
+
+
+#print(arm_selected_vec)
+#arm_unique,arm_counts=np.unique(arm_selected_vec,return_counts=True)
+
+#print(arm_unique,arm_counts)
+
+
+
+regret_cum_mat=np.zeros(shape=(reps,max_iter))
+regret_vec_scnd_cum_mat=np.zeros(shape=(reps,max_iter))
+regret_vec_alt_cum_mat=np.zeros(shape=(reps,max_iter))
+
+regret_cum_mat[:,0]=regret_mat_ucblcb[:,0]
+regret_vec_scnd_cum_mat[:,0]=regret_mat_scnd[:,0]
+regret_vec_alt_cum_mat[:,0]=regret_mat_alt[:,0]
+
+for i in range(1,max_iter):
+    regret_cum_mat[:,i]=regret_cum_mat[:,i-1]+regret_mat_ucblcb[:,i]
+    regret_vec_scnd_cum_mat[:,i] = regret_vec_scnd_cum_mat[:,i - 1] + regret_mat_scnd[:,i]
+    regret_vec_alt_cum_mat[:,i] = regret_vec_alt_cum_mat[:,i - 1] + regret_mat_alt[:,i]
+
+#plt.plot(regret_cum_vec)
+#plt.plot(regret_vec_scnd_cum)
+#plt.plot(regret_vec_alt_cum)
+
+regret_cum_vec=np.zeros(max_iter)
+regret_vec_scnd_cum=np.zeros(max_iter)
+regret_vec_alt_cum=np.zeros(max_iter)
+
+regret_cum_vec_sd=np.zeros(max_iter)
+regret_vec_scnd_cum_sd=np.zeros(max_iter)
+regret_vec_alt_cum_sd=np.zeros(max_iter)
+
+for i in range(max_iter):
+    regret_cum_vec[i]=np.mean(regret_cum_mat[:,i])
+    regret_cum_vec_sd[i]=np.std(regret_cum_mat[:,i])/np.sqrt(reps)
+    regret_vec_scnd_cum[i]=np.mean(regret_vec_scnd_cum_mat[:,i])
+    regret_vec_scnd_cum_sd[i]=np.std(regret_vec_scnd_cum_mat[:,i])/np.sqrt(reps)
+    regret_vec_alt_cum[i]=np.mean(regret_vec_alt_cum_mat[:,i])
+    regret_vec_alt_cum_sd[i]=np.std(regret_vec_alt_cum_mat[:,i])/np.sqrt(reps)
+
+
+mean_1 = regret_cum_vec
+std_1 = regret_cum_vec_sd
+
+mean_2 = regret_vec_scnd_cum
+std_2 = regret_vec_scnd_cum_sd
+
+mean_3=regret_vec_alt_cum
+std_3=regret_vec_alt_cum_sd
+
+x = np.arange(len(mean_1))
+plt.plot(x, mean_1, 'b-', label='UCBLCB with k=2')
+plt.fill_between(x, mean_1 - std_1, mean_1 + std_1, color='b', alpha=0.2)
+plt.plot(x, mean_2, 'r-', label='Second Best UCB')
+plt.fill_between(x, mean_2 - std_2, mean_2 + std_2, color='r', alpha=0.2)
+plt.plot(x, mean_3, 'g-', label='Alternate UCB LCB')
+plt.fill_between(x, mean_3 - std_3, mean_3 + std_3, color='g', alpha=0.2)
+plt.xlabel("Iterations")
+plt.ylabel("Cumulative Regret")
+plt.legend()
+plt.show()
+
+
+
